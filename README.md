@@ -6,14 +6,16 @@ Reines HTML5-Canvas und Web Audio, keine Abhängigkeiten, kein Build-Schritt.
 
 ## Spielen
 
-`index.html` im Browser öffnen, das reicht. Wer lieber einen lokalen Server nutzt:
+**Live:** https://prisma-game.vercel.app
+
+Lokal: `index.html` im Browser öffnen, das reicht. Wer lieber einen lokalen Server nutzt:
 
 ```bash
 python3 -m http.server 8000
 # dann http://localhost:8000 öffnen
 ```
 
-Auf GitHub Pages läuft das Spiel ohne Anpassungen (Settings → Pages → „Deploy from a branch“).
+Gehostet wird es auf Vercel als statische Seite, ohne Build-Schritt und ohne Konfiguration.
 
 ## Steuerung
 
