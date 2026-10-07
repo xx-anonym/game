@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prisma</title>
+<meta name="description" content="Prisma – ein Neon-Survival-Arcade-Spiel im Browser. Brich das Licht, überlebe die Schatten.">
+<meta name="theme-color" content="#07060f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2307060f'/%3E%3Cpath d='M16 6 26 24H6z' fill='none' stroke='%23f4f1ff' stroke-width='2.4' stroke-linejoin='round'/%3E%3Cpath d='M19 17l8 3' stroke='%23ff4d6d' stroke-width='2'/%3E%3Cpath d='M19 18l8 5' stroke='%234dd6ff' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@500;600;700;800&family=Unbounded:wght@700;800;900&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game" aria-label="Spielfeld"></canvas>
+
+<!-- In-game HUD -->
+<div id="hud" hidden>
+  <div class="xpbar"><div class="xpfill" id="xpFill"></div></div>
+  <div class="hud-top">
+    <div class="hud-left">
+      <div class="lv"><span class="lbl">LV</span><span id="hudLv">1</span></div>
+      <div class="hp"><div class="hpfill" id="hpFill"></div><span id="hpText">100 / 100</span></div>
+    </div>
+    <div class="time" id="hudTime">00:00</div>
+    <div class="hud-right">
+      <div class="stat"><span class="lbl">Punkte</span><b id="hudScore">0</b></div>
+      <div class="stat stat-kills"><span class="lbl">Schatten</span><b id="hudKills">0</b></div>
+      <button class="icon-btn" id="btnPause" type="button" aria-label="Pause"></button>
+    </div>
+  </div>
+  <div class="combo" id="combo" hidden>
+    <span class="combo-x">×<span id="comboN">0</span></span>
+    <span class="lbl">Combo</span>
+    <div class="combo-bar"><div id="comboFill"></div></div>
+  </div>
+  <div class="bossbar" id="bossbar" hidden>
+    <span class="lbl" id="bossName">Finsternis</span>
+    <div class="bossbar-track"><div id="bossFill"></div></div>
+  </div>
+  <div class="loadout" id="loadout"></div>
+  <button class="dash-btn" id="btnDash" type="button" hidden>Sprint</button>
+  <div class="banner" id="banner" hidden></div>
+  <div class="hint-overlay" id="hint" hidden></div>
+</div>
+
+<!-- Title screen -->
+<section class="screen screen-menu" id="menu">
+  <div class="menu-col">
+    <p class="eyebrow">Survival-Arcade · Licht gegen Schatten</p>
+    <h1 class="logo">PRISMA</h1>
+    <div class="spectrum-scale" aria-hidden="true">
+      <span class="bar"></span>
+      <span class="ticks"><span>700 nm</span><span>550 nm</span><span>400 nm</span></span>
+    </div>
+    <p class="tagline">Du bist ein Prisma im Dunkel. Sammle Photonen, brich das Licht in Waffen und halte die Schatten so lange auf, wie du kannst.</p>
+    <div class="records" id="records"></div>
+    <div class="menu-actions">
+      <button class="btn btn-primary btn-xl" id="btnPlay" type="button">Spielen</button>
+      <div class="menu-row">
+        <button class="btn" id="btnShop" type="button">Werkstatt <span class="badge" id="shopBadge" hidden></span></button>
+        <button class="btn" id="btnAch" type="button">Erfolge <span class="count" id="achCount"></span></button>
+      </div>
+    </div>
+    <div class="toggles"></div>
+    <p class="controls" id="controlsHint"></p>
+  </div>
+</section>
+
+<!-- Level up -->
+<section class="screen screen-modal" id="levelup" hidden>
+  <div class="lu-wrap">
+    <p class="eyebrow" id="luEyebrow">Level erreicht</p>
+    <h2 class="lu-title" id="luTitle">Level 2</h2>
+    <div class="cards" id="cards"></div>
+    <div class="lu-foot">
+      <button class="btn btn-ghost" id="btnReroll" type="button">Neu würfeln</button>
+      <span class="hint" id="luHint"></span>
+    </div>
+  </div>
+</section>
+
+<!-- Pause -->
+<section class="screen screen-modal" id="pause" hidden>
+  <div class="panel panel-narrow">
+    <div class="panel-head"><div><p class="eyebrow" id="pauseInfo">Lauf pausiert</p><h2 class="panel-title">Pause</h2></div></div>
+    <div class="build" id="pauseBuild"></div>
+    <div class="toggles"></div>
+    <div class="stack">
+      <button class="btn btn-primary" id="btnResume" type="button">Weiter</button>
+      <button class="btn btn-danger" id="btnQuit" type="button">Lauf beenden</button>
+    </div>
+  </div>
+</section>
+
+<!-- Game over -->
+<section class="screen screen-modal" id="over" hidden>
+  <div class="panel">
+    <div class="over-head">
+      <p class="eyebrow" id="overEyebrow">Lauf beendet</p>
+      <h2 class="over-title">Licht erloschen</h2>
+      <span class="record-chip" id="newRecord" hidden>Neuer Rekord</span>
+    </div>
+    <dl class="stats" id="overStats"></dl>
+    <div class="earned" id="overEarned"></div>
+    <p class="next-goal" id="nextGoal"></p>
+    <div class="stack-row">
+      <button class="btn btn-primary" id="btnAgain" type="button">Nochmal</button>
+      <button class="btn" id="btnOverShop" type="button">Werkstatt</button>
+      <button class="btn" id="btnOverMenu" type="button">Menü</button>
+    </div>
+  </div>
+</section>
+
+<!-- Workshop -->
+<section class="screen screen-modal" id="shop" hidden>
+  <div class="panel panel-wide">
+    <div class="panel-head">
+      <div><p class="eyebrow">Dauerhafte Verbesserungen</p><h2 class="panel-title">Werkstatt</h2></div>
+      <div class="balance" id="shopBalance"></div>
+    </div>
+    <div class="shop-grid" id="shopGrid"></div>
+    <div class="stack-row"><button class="btn" id="btnShopBack" type="button">Zurück</button></div>
+  </div>
+</section>
+
+<!-- Achievements -->
+<section class="screen screen-modal" id="ach" hidden>
+  <div class="panel panel-wide">
+    <div class="panel-head">
+      <div><p class="eyebrow" id="achProgress">0 / 0</p><h2 class="panel-title">Erfolge</h2></div>
+    </div>
+    <ul class="ach-list" id="achList"></ul>
+    <div class="stack-row"><button class="btn" id="btnAchBack" type="button">Zurück</button></div>
+  </div>
+</section>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="game.js"></script>
+</body>
+</html>
