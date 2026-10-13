@@ -32,7 +32,10 @@
       <div class="lv"><span class="lbl">LV</span><span id="hudLv">1</span></div>
       <div class="hp"><div class="hpfill" id="hpFill"></div><span id="hpText">100 / 100</span></div>
     </div>
-    <div class="time" id="hudTime">00:00</div>
+    <div class="hud-center">
+      <div class="time" id="hudTime">00:00</div>
+      <div class="timeline" id="timeline" title="15:00 – der Kern der Finsternis"><div class="tl-fill" id="tlFill"></div><i style="left:20%"></i><i style="left:40%"></i><i style="left:60%"></i><i style="left:80%"></i><b></b></div>
+    </div>
     <div class="hud-right">
       <div class="stat"><span class="lbl">Punkte</span><b id="hudScore">0</b></div>
       <div class="stat stat-kills"><span class="lbl">Schatten</span><b id="hudKills">0</b></div>
@@ -63,7 +66,7 @@
       <span class="bar"></span>
       <span class="ticks"><span>700 nm</span><span>550 nm</span><span>400 nm</span></span>
     </div>
-    <p class="tagline">Du bist ein Prisma im Dunkel. Sammle Photonen, brich das Licht in Waffen und halte die Schatten so lange auf, wie du kannst.</p>
+    <p class="tagline">Du bist ein Prisma im Dunkel. Sammle Photonen, brich das Licht in Waffen und überstehe 15 Minuten. Dann erwacht der Kern der Finsternis.</p>
     <div class="records" id="records"></div>
     <div class="menu-actions">
       <button class="btn btn-primary btn-xl" id="btnPlay" type="button">Spielen</button>
@@ -108,7 +111,7 @@
   <div class="panel">
     <div class="over-head">
       <p class="eyebrow" id="overEyebrow">Lauf beendet</p>
-      <h2 class="over-title">Licht erloschen</h2>
+      <h2 class="over-title" id="overTitle">Licht erloschen</h2>
       <span class="record-chip" id="newRecord" hidden>Neuer Rekord</span>
     </div>
     <dl class="stats" id="overStats"></dl>

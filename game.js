@@ -32,8 +32,8 @@ const SPECTRUM = [COL.red, COL.amber, COL.yellow, COL.green, COL.cyan, COL.blue,
 const SAVE_KEY = 'prisma.save.v1';
 function loadSave() {
   const def = {
-    crystals: 0, earned: 0, runs: 0, totalKills: 0, seenHint: false,
-    best: { score: 0, time: 0, level: 0, kills: 0 },
+    crystals: 0, earned: 0, runs: 0, wins: 0, totalKills: 0, seenHint: false,
+    best: { score: 0, time: 0, level: 0, kills: 0, win: 0 },
     shop: {}, ach: {},
     settings: { sfx: true, music: true, shake: !reducedMotion },
   };
@@ -207,6 +207,11 @@ const Sound = (() => {
       tone(330, 1.2, { type: 'sawtooth', slide: 0.1, vol: 0.13, lp: 1200 });
     },
     buy() { if (ok('buy', 0.08)) [0, 5, 9, 12].forEach((s, i) => tone(mtof(72 + s), 0.14, { type: 'triangle', vol: 0.08, when: i * 0.04 })); },
+    victory() {
+      if (!ok('victory', 1)) return;
+      [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tone(mtof(60 + s), 0.5, { type: 'triangle', vol: 0.12, when: i * 0.09 }));
+      [0, 4, 7, 12].forEach((s) => tone(mtof(72 + s), 2.4, { vol: 0.07, attack: 0.08, when: 0.7 }));
+    },
     unlock() { if (ok('unlock', 0.3)) [0, 4, 7, 11, 14].forEach((s, i) => tone(mtof(79 + s), 0.2, { vol: 0.06, when: i * 0.06 })); },
   };
 })();
@@ -368,6 +373,7 @@ const ENEMIES = {
   brute: { hp: 75, speed: 50, r: 25, dmg: 18, xp: 5, color: COL.violet, shape: 'hex' },
   shooter: { hp: 22, speed: 66, r: 14, dmg: 9, xp: 3, color: COL.cyan, shape: 'dia' },
   boss: { hp: 1600, speed: 58, r: 48, dmg: 26, xp: 0, color: COL.white, shape: 'boss' },
+  core: { hp: 1, speed: 46, r: 66, dmg: 34, xp: 0, color: COL.white, shape: 'core' },
 };
 
 const ACHIEVEMENTS = [
@@ -386,9 +392,14 @@ const ACHIEVEMENTS = [
   { id: 'arsenal', name: 'Arsenal', desc: 'Führe vier Waffen gleichzeitig.', reward: 40, test: (r) => Object.keys(r.weapons).length >= 4 },
   { id: 'max', name: 'Meisterstück', desc: 'Bringe eine Waffe auf Stufe V.', reward: 40, test: (r) => Object.values(r.weapons).some((l) => l >= 5) },
   { id: 'clean', name: 'Unberührt', desc: 'Überlebe 2 Minuten ohne Treffer.', reward: 50, test: (r) => r.t - r.lastHurt >= 120 },
+  { id: 'win', name: 'Licht kehrt zurück', desc: 'Besiege den Kern der Finsternis.', reward: 200, test: (r) => r.won },
+  { id: 'core60', name: 'Kernschmelze', desc: 'Besiege den Kern in unter 60 Sekunden.', reward: 120, test: (r) => r.won && r.winT - r.coreT < 60 },
+  { id: 'win3', name: 'Leuchtfeuer', desc: 'Gewinne drei Läufe.', reward: 150, test: () => save.wins >= 3 },
 ];
 
 const MAX_WEAPONS = 4, MAX_PASSIVES = 5, MAX_ENEMIES = 420;
+const FINAL_T = 900; // at 15:00 the Core of Darkness awakens; beating it ends the run
+const CORE_HP = 36000;
 const xpFor = (l) => Math.round(4 + (l - 1) * 4.2 + Math.pow(l - 1, 1.75) * 0.45);
 const comboColor = (c) => (c < 10 ? COL.red : c < 25 ? COL.amber : c < 50 ? COL.yellow : c < 100 ? COL.green : c < 200 ? COL.cyan : c < 400 ? COL.blue : COL.violet);
 
@@ -462,6 +473,7 @@ function newRun() {
     shake: 0, flash: 0, flashCol: COL.red, timeScale: 1, slowT: 0, dying: 0,
     lastHurt: 0, dashReq: false, dashId: 0, ghostT: 0, trailT: 0,
     gemStreak: 0, gemStreakT: 0, achT: 0, luOpenT: 0, quitArmed: false,
+    core: null, coreT: 0, coreWarned: false, won: false, winT: 0, victory: 0,
   };
   if (shopLv('second')) run.weapons[pick(['orbit', 'nova', 'chain', 'laser'])] = 1;
   calcStats();
@@ -616,24 +628,53 @@ function spawnBoss() {
   Sound.setIntensity(3);
 }
 
+function spawnCore() {
+  const r = run;
+  r.coreT = r.t;
+  const [x, y] = edgePos(60);
+  const e = spawnEnemy('core', x, y);
+  e.boss = true;
+  e.final = true;
+  e.hp = e.maxHp = CORE_HP;
+  e.dmg = 34 * (1 + (r.t / 60) * 0.08);
+  e.phase = 0; e.actT = 2; e.windT = 0; e.chargeT = 0; e.cvx = 0; e.cvy = 0;
+  e.stage = 1; e.spiralT = 0; e.spiralEmit = 0; e.spiralA = 0; e.spiralDir = 1;
+  r.core = e;
+  r.boss = e;
+  r.shake = 18;
+  r.flash = 0.6; r.flashCol = COL.violet;
+  $('#bossName').textContent = 'Kern der Finsternis';
+  Sound.setIntensity(3);
+  Sound.boom();
+}
+
 function director(dt) {
   const r = run, m = r.t / 60;
-  const rate = Math.min(28, 1.1 + 0.85 * m + 0.07 * m * m) * (r.boss ? 0.45 : 1);
+  if (r.won) return;
+  const rate = Math.min(28, 1.1 + 0.85 * m + 0.07 * m * m) * (r.core ? 0.3 : r.boss ? 0.45 : 1);
   r.spawnAcc += dt * rate;
   while (r.spawnAcc >= 1) {
     r.spawnAcc -= 1;
     if (enemies.length < MAX_ENEMIES) spawnEnemy(chooseType(m));
   }
-  if (r.t >= r.nextSwarm) { r.nextSwarm += 50; swarm(); }
-  if (!r.bossWarned && !r.boss && r.t >= r.nextBoss - 4) {
-    r.bossWarned = true;
-    banner('Finsternis naht', 'Ein Boss erscheint in 4 Sekunden', COL.white);
+  if (!r.core && r.t >= r.nextSwarm) { r.nextSwarm += 50; swarm(); }
+  if (r.nextBoss < FINAL_T) {
+    if (!r.bossWarned && !r.boss && r.t >= r.nextBoss - 4) {
+      r.bossWarned = true;
+      banner('Finsternis naht', 'Ein Boss erscheint in 4 Sekunden', COL.white);
+      Sound.warn();
+    }
+    if (r.t >= r.nextBoss) {
+      r.nextBoss += 180;
+      if (!r.boss) spawnBoss();
+    }
+  }
+  if (!r.coreWarned && r.t >= FINAL_T - 5) {
+    r.coreWarned = true;
+    banner('Das Ende naht', 'Der Kern der Finsternis erwacht', COL.white);
     Sound.warn();
   }
-  if (r.t >= r.nextBoss) {
-    r.nextBoss += 180;
-    if (!r.boss) spawnBoss();
-  }
+  if (!r.core && r.t >= FINAL_T) spawnCore();
   if (!r.boss) Sound.setIntensity(r.t < 30 ? 0 : r.t < 90 ? 1 : 2);
 }
 
@@ -673,11 +714,13 @@ function killEnemy(e) {
   r.comboT = 2.4;
   r.comboPop = 1.3;
   if (r.combo > r.maxCombo) r.maxCombo = r.combo;
-  r.score += (e.boss ? 5000 : e.xp * 10) * (1 + Math.min(r.combo, 500) * 0.02);
+  r.score += (e.final ? 25000 : e.boss ? 5000 : e.xp * 10) * (1 + Math.min(r.combo, 500) * 0.02);
   Sound.kill();
 
-  if (e.boss) {
-    r.boss = null;
+  if (e.final) {
+    winRun(e);
+  } else if (e.boss) {
+    if (r.boss === e) r.boss = null;
     r.bosses++;
     r.slowT = 0.9;
     r.shake = 26;
@@ -689,7 +732,7 @@ function killEnemy(e) {
     fx.push({ k: 'ring', x: e.x, y: e.y, R: 420, life: 0.8, max: 0.8, col: COL.white, w: 10 });
     banner('Finsternis gebrochen', '+5.000 Punkte · Truhe erscheint', COL.yellow);
     Sound.boom();
-    Sound.setIntensity(2);
+    if (!r.core) Sound.setIntensity(2);
   } else {
     burst(e.x, e.y, e.color, e.elite ? 26 : 9, e.elite ? 380 : 240);
     dropGem(e.x, e.y, e.xp);
@@ -718,6 +761,36 @@ function killEnemy(e) {
   }
 }
 
+// The Core falls: every shadow dissolves into light and the run ends in victory.
+function winRun(e) {
+  const r = run;
+  r.won = true;
+  r.winT = r.t;
+  r.victory = 4.2;
+  r.boss = null;
+  r.bosses++;
+  r.slowT = 1.4;
+  r.shake = 30;
+  r.flash = 1.4; r.flashCol = COL.white;
+  player.inv = 99;
+  for (const c of SPECTRUM) burst(e.x, e.y, c, 22, 760, 6);
+  for (let i = 0; i < 3; i++) {
+    const life = 0.9 + i * 0.35;
+    fx.push({ k: 'ring', x: e.x, y: e.y, R: 480 + i * 280, life, max: life, col: SPECTRUM[i * 3], w: 14 });
+  }
+  for (const o of enemies) {
+    if (o.dead || o === e) continue;
+    o.dead = true;
+    burst(o.x, o.y, o.color, 3, 160);
+  }
+  for (const b of ebullets) b.dead = true;
+  for (let i = 0; i < 40; i++) dropPickup(e.x, e.y, 'crystal', 420);
+  banner('Licht kehrt zurück', 'Der Kern der Finsternis ist gebrochen', COL.yellow);
+  Sound.boom();
+  Sound.victory();
+  Sound.musicStop();
+}
+
 function gemColor(v) { return v < 5 ? COL.red : v < 20 ? COL.green : COL.violet; }
 function dropGem(x, y, v) {
   if (gems.length > 320) { // merge into the closest photon so the field stays readable
@@ -735,7 +808,7 @@ function dropGem(x, y, v) {
 }
 function dropPickup(x, y, kind, spread) {
   const a = Math.random() * TAU, s = rand(0.3, 1) * spread;
-  pickups.push({ x, y, kind, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: Math.random() * TAU, pull: false, sp: 0, dead: false });
+  pickups.push({ x, y, kind, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: Math.random() * TAU, age: 0, pull: false, sp: 0, dead: false });
 }
 
 function hurtPlayer(dmg) {
@@ -796,8 +869,10 @@ function shockwave(R, dmg, col) {
 // ============================================================ Weapons
 const FIRE = {
   beam(L) {
-    const p = player;
-    const tgt = nearestEnemy(p.x, p.y, 560);
+    const p = player, boss = run.boss;
+    run.beamFlip = !run.beamFlip; // every other volley goes to a boss in range, the rest keeps you clear
+    const bossNear = run.beamFlip && boss && !boss.dead && Math.hypot(boss.x - p.x, boss.y - p.y) < 560;
+    const tgt = bossNear ? boss : nearestEnemy(p.x, p.y, 560);
     if (!tgt) return false;
     const base = Math.atan2(tgt.y - p.y, tgt.x - p.x);
     const n = L.n + run.st.multi;
@@ -846,8 +921,9 @@ const FIRE = {
     return fired;
   },
   laser(L) {
-    const p = player;
-    const tgt = nearestEnemy(p.x, p.y, L.len * 0.85);
+    const p = player, boss = run.boss, reach = L.len * 0.85;
+    const bossInReach = boss && !boss.dead && Math.hypot(boss.x - p.x, boss.y - p.y) < reach;
+    const tgt = bossInReach ? boss : nearestEnemy(p.x, p.y, reach);
     if (!tgt) return false;
     const base = Math.atan2(tgt.y - p.y, tgt.x - p.x);
     const beams = 1 + run.st.multi;
@@ -1098,6 +1174,7 @@ function update(dt) {
     let sp = e.speed;
     if (e.boss) {
       if (bossAI(e, dt, dx, dy)) sp = 0;
+      else if (d > 420) sp = Math.max(sp, 165); // bosses close the gap instead of being outrun forever
     } else if (e.type === 'shooter') {
       if (d < 240) sp = -sp * 0.7;
       else if (d < 330) sp = 0;
@@ -1189,7 +1266,7 @@ function update(dt) {
     if (g.dead) continue;
     g.t += dt;
     const dx = p.x - g.x, dy = p.y - g.y, d2 = dx * dx + dy * dy;
-    if (!g.pull && d2 < mag2 && !r.dying) g.pull = true;
+    if (!g.pull && (d2 < mag2 || r.won) && !r.dying) g.pull = true;
     if (g.pull && !r.dying) {
       const d = Math.sqrt(d2) || 1;
       g.sp = Math.min(1100, (g.sp || 140) + dt * 1500);
@@ -1215,8 +1292,9 @@ function update(dt) {
     const u = pickups[i];
     if (u.dead) continue;
     u.t += dt;
+    u.age += dt;
     const dx = p.x - u.x, dy = p.y - u.y, d2 = dx * dx + dy * dy;
-    if (u.kind === 'crystal' && !u.pull && d2 < mag2 * 1.2 && !r.dying) u.pull = true;
+    if (u.kind === 'crystal' && !u.pull && (d2 < mag2 * 1.2 || (r.won && u.age > 0.7)) && !r.dying) u.pull = true;
     if (u.pull && !r.dying) {
       const d = Math.sqrt(d2) || 1;
       u.sp = Math.min(1000, (u.sp || 160) + dt * 1400);
@@ -1272,7 +1350,7 @@ function update(dt) {
   r.achT -= dt;
   if (r.achT <= 0) { r.achT = 0.5; checkAchievements(); }
 
-  if (!r.dying && (r.pendingLv > 0 || r.chestPending > 0)) openLevelUp();
+  if (!r.dying && !r.won && (r.pendingLv > 0 || r.chestPending > 0)) openLevelUp();
 }
 
 function compact(arr) {
@@ -1299,6 +1377,7 @@ function bossAI(e, dt, dx, dy) {
     }
     return true;
   }
+  if (e.final) return coreAI(e, dt, dx, dy);
   e.actT -= dt;
   if (e.actT > 0) return false;
   e.phase = (e.phase + 1) % 3;
@@ -1322,6 +1401,73 @@ function bossAI(e, dt, dx, dy) {
     fx.push({ k: 'tele', x: e.x, y: e.y, a: e.chargeA, len: 470, life: 0.7, max: 0.7 });
     Sound.warn();
     e.actT = 3.2;
+  }
+  return false;
+}
+
+function coreRing(e, n, spd, off) {
+  for (let i = 0; i < n && ebullets.length < 520; i++) {
+    const a = off + (i / n) * TAU;
+    ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, r: 7, dmg: e.dmg * 0.45, life: 6, col: COL.violet, dead: false });
+  }
+}
+
+// Three phases (by remaining life): rings, summons, spiral streams and charges, each faster than the last.
+function coreAI(e, dt, dx, dy) {
+  const r = run;
+  const frac = e.hp / e.maxHp;
+  const stage = frac > 0.66 ? 1 : frac > 0.33 ? 2 : 3;
+  if (stage !== e.stage) {
+    e.stage = stage;
+    e.speed *= 1.18;
+    e.flash = 0.35;
+    r.shake = Math.max(r.shake, 16);
+    banner(stage === 2 ? 'Der Kern bricht auf' : 'Letzte Glut', `Phase ${stage} von 3`, COL.red);
+    coreRing(e, 18 + stage * 4, 150, Math.random() * TAU);
+    Sound.warn();
+  }
+  if (e.spiralT > 0) {
+    e.spiralT -= dt;
+    e.spiralEmit -= dt;
+    const arms = stage + 1, spd = 140 + stage * 14;
+    while (e.spiralEmit <= 0) {
+      e.spiralEmit += stage === 3 ? 0.075 : 0.095;
+      e.spiralA += 0.21 * e.spiralDir;
+      for (let k = 0; k < arms && ebullets.length < 520; k++) {
+        const a = e.spiralA + (k / arms) * TAU, c = Math.cos(a), s = Math.sin(a);
+        ebullets.push({ x: e.x + c * e.r * 0.6, y: e.y + s * e.r * 0.6, vx: c * spd, vy: s * spd, r: 7, dmg: e.dmg * 0.45, life: 6, col: SPECTRUM[(k * 2 + stage) % 7], dead: false });
+      }
+    }
+  }
+  e.actT -= dt * (stage === 3 ? 1.3 : 1);
+  if (e.actT > 0) return false;
+  e.phase = (e.phase + 1) % 4;
+  if (e.phase === 0) {
+    const n = 20 + stage * 4, off = Math.random() * TAU;
+    coreRing(e, n, 165, off);
+    if (stage >= 2) coreRing(e, n, 110, off + Math.PI / n);
+    Sound.nova();
+    e.actT = 2.3;
+  } else if (e.phase === 1) {
+    for (let i = 0; i < 4 + stage * 2; i++) {
+      const a = Math.random() * TAU;
+      if (enemies.length < MAX_ENEMIES + 40) spawnEnemy(pick(['shade', 'runner']), e.x + Math.cos(a) * 90, e.y + Math.sin(a) * 90);
+    }
+    if (stage === 3) spawnEnemy('brute', e.x, e.y + e.r + 30);
+    e.actT = 2.1;
+  } else if (e.phase === 2) {
+    e.spiralT = 2 + stage * 0.5;
+    e.spiralEmit = 0;
+    e.spiralA = Math.random() * TAU;
+    e.spiralDir = Math.random() < 0.5 ? -1 : 1;
+    e.actT = e.spiralT + 0.5;
+    Sound.laser();
+  } else {
+    e.windT = stage === 3 ? 0.5 : 0.65;
+    e.chargeA = Math.atan2(dy, dx);
+    fx.push({ k: 'tele', x: e.x, y: e.y, a: e.chargeA, len: 470, life: e.windT, max: e.windT });
+    Sound.warn();
+    e.actT = 2.4;
   }
   return false;
 }
@@ -1828,7 +1974,39 @@ function drawPlayer(t) {
   ctx.globalCompositeOperation = 'lighter';
 }
 
+function drawCore(e, t) {
+  const R = e.r, st = e.stage || 1, spin = e.rot * (1 + st * 0.6);
+  ctx.globalAlpha = 1;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 7;
+  for (let i = 0; i < 7; i++) {
+    const a = spin + (i / 7) * TAU;
+    ctx.strokeStyle = SPECTRUM[i];
+    ctx.beginPath(); ctx.arc(e.x, e.y, R * 1.32, a, a + (TAU / 7) * 0.62); ctx.stroke();
+  }
+  const n = 18, pulse = 1 + Math.sin(t * (4 + st * 2)) * 0.05;
+  ctx.beginPath();
+  for (let i = 0; i < n * 2; i++) {
+    const a = -spin * 0.7 + (i / (n * 2)) * TAU, rr = (i % 2 ? R * 0.8 : R * 1.06) * pulse;
+    const x = e.x + Math.cos(a) * rr, y = e.y + Math.sin(a) * rr;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = e.flash > 0 ? COL.white : COL.ink;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = st === 3 ? COL.red : COL.white;
+  ctx.stroke();
+  const ang = Math.atan2(player.y - e.y, player.x - e.x), c = Math.cos(ang), s = Math.sin(ang);
+  ctx.fillStyle = COL.white;
+  ctx.beginPath(); ctx.arc(e.x + c * R * 0.14, e.y + s * R * 0.14, R * 0.3, 0, TAU); ctx.fill();
+  ctx.fillStyle = st === 3 ? COL.red : COL.ink;
+  ctx.beginPath(); ctx.arc(e.x + c * R * 0.26, e.y + s * R * 0.26, R * 0.13, 0, TAU); ctx.fill();
+}
+
 function drawEnemy(e, t) {
+  if (e.final) { drawCore(e, t); return; }
   const ang = Math.atan2(player.y - e.y, player.x - e.x);
   const R = e.r;
   ctx.beginPath();
@@ -1972,12 +2150,12 @@ function drawPickup(u, t) {
 // ============================================================ UI
 const ui = {
   hud: $('#hud'), menu: $('#menu'), levelup: $('#levelup'), pause: $('#pause'), over: $('#over'), shop: $('#shop'), ach: $('#ach'),
-  xpFill: $('#xpFill'), hpFill: $('#hpFill'), hpText: $('#hpText'), lv: $('#hudLv'), time: $('#hudTime'), score: $('#hudScore'), kills: $('#hudKills'),
+  xpFill: $('#xpFill'), tlFill: $('#tlFill'), timeline: $('#timeline'), hpFill: $('#hpFill'), hpText: $('#hpText'), lv: $('#hudLv'), time: $('#hudTime'), score: $('#hudScore'), kills: $('#hudKills'),
   combo: $('#combo'), comboN: $('#comboN'), comboFill: $('#comboFill'), bossbar: $('#bossbar'), bossFill: $('#bossFill'),
   loadout: $('#loadout'), dash: $('#btnDash'), banner: $('#banner'), hint: $('#hint'), cards: $('#cards'), reroll: $('#btnReroll'), toasts: $('#toasts'),
 };
 let shopReturn = 'menu';
-let overOpenT = 0;
+let overOpenT = 0, overProgress = '';
 let bannerT = 0, hintT = 0;
 const hudCache = {};
 const setText = (el, key, val) => { if (hudCache[key] !== val) { hudCache[key] = val; el.textContent = val; } };
@@ -2006,6 +2184,9 @@ function updateHud() {
   ui.xpFill.style.transform = `scaleX(${clamp(r.xp / r.xpNext, 0, 1).toFixed(4)})`;
   setText(ui.lv, 'lv', r.level);
   setText(ui.time, 't', fmtTime(r.t));
+  ui.tlFill.style.transform = `scaleX(${clamp(r.t / FINAL_T, 0, 1).toFixed(4)})`;
+  const fin = !!r.core && !r.won;
+  if (hudCache.fin !== fin) { hudCache.fin = fin; ui.timeline.classList.toggle('final', fin); }
   setText(ui.score, 's', fmtNum(r.score));
   setText(ui.kills, 'k', fmtNum(r.kills));
   ui.hpFill.style.transform = `scaleX(${clamp(p.hp / r.st.maxHp, 0, 1).toFixed(4)})`;
@@ -2190,7 +2371,7 @@ function startRun() {
 }
 
 function pauseGame() {
-  if (state !== 'play' || run.dying) return;
+  if (state !== 'play' || run.dying || run.won) return;
   state = 'pause';
   joy.on = false;
   run.quitArmed = false;
@@ -2225,16 +2406,17 @@ function quitRun() {
   }
   ui.pause.hidden = true;
   Sound.musicStop();
-  endRun(true);
+  endRun('quit');
 }
 
-function endRun(quit) {
-  const r = run;
+function endRun(kind) {
+  const r = run, won = kind === 'win';
   state = 'over';
+  if (won) save.wins = (save.wins || 0) + 1;
   checkAchievements();
   const minutes = Math.floor(r.t / 60);
-  const timeBonus = minutes * 3, scoreBonus = Math.floor(r.score / 5000);
-  const earned = r.crystals + timeBonus + scoreBonus;
+  const timeBonus = minutes * 3, scoreBonus = Math.floor(r.score / 5000), winBonus = won ? 150 : 0;
+  const earned = r.crystals + timeBonus + scoreBonus + winBonus;
   save.crystals += earned;
   save.earned += earned;
   save.runs++;
@@ -2242,16 +2424,22 @@ function endRun(quit) {
   const b = save.best;
   const rec = { time: r.t > b.time, score: r.score > b.score, level: r.level > b.level, kills: r.kills > b.kills };
   const anyRecord = save.runs > 1 && (rec.time || rec.score);
+  const firstWin = won && save.wins === 1, fastest = won && (!b.win || r.winT < b.win);
+  if (fastest) b.win = r.winT;
   b.time = Math.max(b.time, r.t);
   b.score = Math.max(b.score, Math.floor(r.score));
   b.level = Math.max(b.level, r.level);
   b.kills = Math.max(b.kills, r.kills);
   persist();
 
-  $('#overEyebrow').textContent = quit ? 'Lauf abgebrochen' : `Lauf ${save.runs}`;
-  $('#newRecord').hidden = !anyRecord;
+  $('#overEyebrow').textContent = kind === 'quit' ? 'Lauf abgebrochen' : won ? `Sieg · Lauf ${save.runs}` : `Lauf ${save.runs}`;
+  $('#overTitle').textContent = won ? 'Licht kehrt zurück' : 'Licht erloschen';
+  ui.over.classList.toggle('is-win', won);
+  const chip = firstWin ? 'Erster Sieg' : fastest ? 'Schnellster Sieg' : anyRecord ? 'Neuer Rekord' : '';
+  $('#newRecord').textContent = chip;
+  $('#newRecord').hidden = !chip;
   const stats = [
-    ['Zeit', fmtTime(r.t), rec.time],
+    won ? ['Siegeszeit', fmtTime(r.winT), fastest && !firstWin] : ['Zeit', fmtTime(r.t), rec.time],
     ['Punkte', fmtNum(r.score), rec.score],
     ['Level', r.level, rec.level],
     ['Schatten', fmtNum(r.kills), rec.kills],
@@ -2260,14 +2448,22 @@ function endRun(quit) {
   ];
   $('#overStats').innerHTML = stats.map(([k, v, isRec]) => `<div class="${isRec && save.runs > 1 ? 'is-record' : ''}"><dt>${k}</dt><dd>${v}</dd></div>`).join('');
   const parts = [`${r.crystals} gesammelt`, `${timeBonus} Überlebensbonus`, `${scoreBonus} Punktebonus`];
+  if (winBonus) parts.push(`${winBonus} Siegesbonus`);
   if (r.achCrystals) parts.push(`${r.achCrystals} aus Erfolgen`);
   $('#overEarned').innerHTML = `${crystalHtml(earned + r.achCrystals).replace('<b>', '<b>+')}<small>${parts.join(' · ')}</small>`;
-  $('#nextGoal').textContent = nextGoalText();
+  if (won) overProgress = '';
+  else if (r.core) overProgress = `Der Kern hatte noch ${Math.max(1, Math.ceil((r.core.hp / r.core.maxHp) * 100))} % Leben.`;
+  else overProgress = `Noch ${fmtTime(FINAL_T - r.t)} bis zum Kern der Finsternis.`;
+  setNextGoal();
   ui.hud.hidden = true;
   ui.over.hidden = false;
   overOpenT = performance.now();
   blurActive();
   if (!touchDevice) setTimeout(() => { if (state === 'over' && !panelOpen()) $('#btnAgain').focus({ preventScroll: true }); }, 700);
+}
+
+function setNextGoal() {
+  $('#nextGoal').textContent = (overProgress ? overProgress + ' ' : '') + nextGoalText();
 }
 
 function nextGoalText() {
@@ -2286,10 +2482,13 @@ function nextGoalText() {
 }
 
 function renderMenu() {
-  const b = save.best;
-  $('#records').innerHTML = b.time > 0
-    ? `<div><span class="lbl">Rekordzeit</span><b>${fmtTime(b.time)}</b></div><div><span class="lbl">Punkte</span><b>${fmtNum(b.score)}</b></div><div><span class="lbl">Level</span><b>${b.level}</b></div><div><span class="lbl">Splitter</span>${crystalHtml(save.crystals)}</div>`
-    : `<div><span class="lbl">Rekordzeit</span><b>--:--</b></div><div><span class="lbl">Splitter</span>${crystalHtml(save.crystals)}</div><div><span class="lbl">Ziel</span><b>3:00 überleben</b></div>`;
+  const b = save.best, cr = `<div><span class="lbl">Splitter</span>${crystalHtml(save.crystals)}</div>`;
+  const goal = b.time < FINAL_T ? `<small> / ${fmtTime(FINAL_T)}</small>` : '';
+  $('#records').innerHTML = save.wins
+    ? `<div><span class="lbl">Siege</span><b>${save.wins}</b></div><div><span class="lbl">Schnellster Sieg</span><b>${fmtTime(b.win)}</b></div><div><span class="lbl">Punkte</span><b>${fmtNum(b.score)}</b></div>${cr}`
+    : b.time > 0
+      ? `<div><span class="lbl">Rekordzeit</span><b>${fmtTime(b.time)}${goal}</b></div><div><span class="lbl">Punkte</span><b>${fmtNum(b.score)}</b></div><div><span class="lbl">Level</span><b>${b.level}</b></div>${cr}`
+      : `<div><span class="lbl">Rekordzeit</span><b>--:--</b></div>${cr}<div><span class="lbl">Ziel</span><b>${fmtTime(FINAL_T)} überleben</b></div>`;
   const affordable = SHOP.filter((it) => shopLv(it.id) < it.max && shopCost(it, shopLv(it.id)) <= save.crystals).length;
   const badge = $('#shopBadge');
   badge.hidden = !affordable;
@@ -2339,7 +2538,7 @@ function buy(id) {
   Sound.buy();
   renderShop();
   renderMenu();
-  if (state === 'over') $('#nextGoal').textContent = nextGoalText();
+  if (state === 'over') setNextGoal();
   const again = $(`[data-buy="${id}"]`);
   if (again && !again.disabled) again.focus({ preventScroll: true });
   else moveFocus(0);
@@ -2443,10 +2642,14 @@ function frame(now) {
   if (state === 'play' && run) {
     const r = run;
     if (r.slowT > 0) { r.slowT -= realDt; r.timeScale = r.slowT > 0 ? 0.3 : 1; }
+    if (r.victory > 0) {
+      r.victory -= realDt;
+      if (r.victory <= 0) endRun('win');
+    }
     if (r.dying > 0) {
       r.timeScale = 0.35;
       r.dying -= realDt;
-      if (r.dying <= 0) endRun(false);
+      if (r.dying <= 0) endRun('death');
     }
     if (state === 'play') {
       const dt = realDt * r.timeScale;
@@ -2483,13 +2686,13 @@ window.__prisma = {
   simulate(seconds, autoPick = true, steer = null) {
     const dt = 1 / 60;
     for (let i = 0; i < seconds * 60; i++) {
-      if (state === 'levelup' && autoPick) { run.luOpenT = 0; choose((Math.random() * run.choices.length) | 0, true); }
-      if (state !== 'play' || run.dying) break;
+      while (state === 'levelup' && autoPick) { run.luOpenT = 0; choose((Math.random() * run.choices.length) | 0, true); }
+      if (state !== 'play' || run.dying || run.won) break;
       if (steer) { const v = steer(player, enemies, gems); pad.x = v[0]; pad.y = v[1]; if (v[2]) run.dashReq = true; }
       update(dt);
     }
     pad.x = pad.y = 0;
-    return run && run.dying ? 'dying' : state;
+    return run && run.won ? 'won' : run && run.dying ? 'dying' : state;
   },
 };
 })();
