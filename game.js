@@ -212,6 +212,9 @@ const Sound = (() => {
       [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tone(mtof(60 + s), 0.5, { type: 'triangle', vol: 0.12, when: i * 0.09 }));
       [0, 4, 7, 12].forEach((s) => tone(mtof(72 + s), 2.4, { vol: 0.07, attack: 0.08, when: 0.7 }));
     },
+    blast() { if (ok('blast', 0.08)) { noise(0.35, { f: 700, type: 'lowpass', slide: 0.3, vol: 0.2 }); tone(110, 0.25, { vol: 0.16, slide: 0.4 }); } },
+    zone() { if (ok('zone', 1)) [0, 7, 12, 19].forEach((s, i) => tone(mtof(55 + s), 1.6, { type: 'triangle', vol: 0.07, attack: 0.25, when: i * 0.12 })); },
+    evolve() { if (ok('evolve', 0.5)) [0, 4, 7, 11, 14, 19, 24].forEach((s, i) => tone(mtof(67 + s), 0.32, { type: 'square', vol: 0.035, lp: 3200, when: i * 0.06 })); },
     unlock() { if (ok('unlock', 0.3)) [0, 4, 7, 11, 14].forEach((s, i) => tone(mtof(79 + s), 0.2, { vol: 0.06, when: i * 0.06 })); },
   };
 })();
@@ -336,6 +339,25 @@ const WEAPONS = {
   },
 };
 
+// A weapon at tier V plus its partner module evolves into something much stronger.
+const EVOLUTIONS = {
+  beam: { name: 'Sonnenlanze', needs: 'dmg', desc: 'Schwere Lichtlanzen durchbohren jeden Schatten in ihrer Bahn.', stats: { cd: 0.3, dmg: 34, n: 4, pierce: 99, speed: 780, size: 1.8 } },
+  orbit: { name: 'Ereignishorizont', needs: 'magnet', desc: 'Zwei gegenläufige Linsenkränze, innen und außen.', stats: { n: 6, dmg: 28, rad: 96, rad2: 158, spd: 3.6 } },
+  nova: { name: 'Hypernova', needs: 'area', desc: 'Eine doppelte Schockwelle mit riesigem Radius.', stats: { cd: 1.7, dmg: 72, rad: 240, echo: true } },
+  chain: { name: 'Gewittersturm', needs: 'cd', desc: 'Drei Blitze auf einmal, die je zwölfmal springen.', stats: { cd: 0.8, dmg: 42, jumps: 12, bolts: 3 } },
+  laser: { name: 'Prismenfächer', needs: 'multi', desc: 'Ein Fächer aus fünf Spektralstrahlen.', stats: { cd: 1.4, dmg: 70, w: 30, len: 900, beams: 5 } },
+};
+
+// Every defeated boss opens the next world: new colours and a new kind of shadow.
+const ZONES = [
+  { name: 'Dämmerung', bg: [7, 6, 15], grid: [170, 160, 235], neb: [COL.violet, COL.blue], accent: COL.white, mote: [4, -6] },
+  { name: 'Glutfeld', bg: [18, 6, 8], grid: [255, 150, 110], neb: [COL.red, COL.amber], accent: COL.amber, mote: [6, -34], intro: 'Neu: Zünder explodieren, wenn sie dich erreichen' },
+  { name: 'Tiefsee', bg: [3, 10, 21], grid: [120, 200, 255], neb: [COL.cyan, COL.blue], accent: COL.cyan, mote: [-3, -16], intro: 'Neu: Phantome springen plötzlich auf dich zu' },
+  { name: 'Giftgarten', bg: [5, 15, 9], grid: [140, 255, 180], neb: [COL.green, COL.yellow], accent: COL.green, mote: [18, 5], intro: 'Neu: Brutstöcke erzeugen ständig Nachwuchs' },
+  { name: 'Leere', bg: [13, 4, 19], grid: [210, 140, 255], neb: [COL.violet, COL.red], accent: COL.violet, mote: [-5, 12], intro: 'Neu: Lanzer stürmen in gerader Linie auf dich zu' },
+  { name: 'Kern', bg: [3, 1, 6], grid: [255, 120, 140], neb: [COL.red, COL.violet], accent: COL.red, mote: [0, 0] },
+];
+
 const PASSIVES = {
   hp: { name: 'Kristallhülle', icon: 'hp', color: COL.red, max: 5, desc: '+20 maximales Leben, heilt sofort 20.' },
   dmg: { name: 'Fokuslinse', icon: 'dmg', color: COL.amber, max: 5, desc: '+10 % Schaden für alle Waffen.' },
@@ -372,6 +394,10 @@ const ENEMIES = {
   mini: { hp: 8, speed: 105, r: 9, dmg: 6, xp: 1, color: COL.green, shape: 'sq' },
   brute: { hp: 75, speed: 50, r: 25, dmg: 18, xp: 5, color: COL.violet, shape: 'hex' },
   shooter: { hp: 22, speed: 66, r: 14, dmg: 9, xp: 3, color: COL.cyan, shape: 'dia' },
+  bomber: { hp: 16, speed: 92, r: 12, dmg: 24, xp: 2, color: '#ff7a45', shape: 'bomb' },
+  phantom: { hp: 26, speed: 74, r: 13, dmg: 11, xp: 2, color: '#e3d8ff', shape: 'ghost' },
+  hive: { hp: 150, speed: 34, r: 27, dmg: 15, xp: 8, color: '#c6ff4d', shape: 'hive' },
+  lancer: { hp: 40, speed: 72, r: 15, dmg: 18, xp: 3, color: COL.blue, shape: 'lance' },
   boss: { hp: 1600, speed: 58, r: 48, dmg: 26, xp: 0, color: COL.white, shape: 'boss' },
   core: { hp: 1, speed: 46, r: 66, dmg: 34, xp: 0, color: COL.white, shape: 'core' },
 };
@@ -395,11 +421,14 @@ const ACHIEVEMENTS = [
   { id: 'win', name: 'Licht kehrt zurück', desc: 'Besiege den Kern der Finsternis.', reward: 200, test: (r) => r.won },
   { id: 'core60', name: 'Kernschmelze', desc: 'Besiege den Kern in unter 60 Sekunden.', reward: 120, test: (r) => r.won && r.winT - r.coreT < 60 },
   { id: 'win3', name: 'Leuchtfeuer', desc: 'Gewinne drei Läufe.', reward: 150, test: () => save.wins >= 3 },
+  { id: 'evo', name: 'Metamorphose', desc: 'Entwickle eine Waffe.', reward: 60, test: (r) => r.evoCount >= 1 },
+  { id: 'evo2', name: 'Doppelspektrum', desc: 'Entwickle zwei Waffen in einem Lauf.', reward: 100, test: (r) => r.evoCount >= 2 },
+  { id: 'zone5', name: 'In die Leere', desc: 'Erreiche die fünfte Welt.', reward: 80, test: (r) => r.maxZone >= 4 },
 ];
 
 const MAX_WEAPONS = 4, MAX_PASSIVES = 5, MAX_ENEMIES = 420;
 const FINAL_T = 900; // at 15:00 the Core of Darkness awakens; beating it ends the run
-const CORE_HP = 36000;
+const CORE_HP = 42000, CORE_HP_PER_EVO = 6000; // evolved builds hit far harder, so the Core grows with them
 const xpFor = (l) => Math.round(4 + (l - 1) * 4.2 + Math.pow(l - 1, 1.75) * 0.45);
 const comboColor = (c) => (c < 10 ? COL.red : c < 25 ? COL.amber : c < 50 ? COL.yellow : c < 100 ? COL.green : c < 200 ? COL.cyan : c < 400 ? COL.blue : COL.violet);
 
@@ -474,6 +503,8 @@ function newRun() {
     lastHurt: 0, dashReq: false, dashId: 0, ghostT: 0, trailT: 0,
     gemStreak: 0, gemStreakT: 0, achT: 0, luOpenT: 0, quitArmed: false,
     core: null, coreT: 0, coreWarned: false, won: false, winT: 0, victory: 0,
+    evolved: {}, evoCount: 0, novaEcho: null, beamFlip: false, orbitR: [],
+    zone: 0, prevZone: 0, maxZone: 0, zoneMix: 1, zoneBannerT: 0, blasts: [],
   };
   if (shopLv('second')) run.weapons[pick(['orbit', 'nova', 'chain', 'laser'])] = 1;
   calcStats();
@@ -580,6 +611,7 @@ function spawnEnemy(type, x, y, forceElite = false) {
     color: D.color, shape: D.shape, elite, boss: false,
     kx: 0, ky: 0, flash: 0, dead: false, t: rand(0, 6), rot: rand(0, TAU),
     lensT: 0, dashHit: 0, shootT: rand(1.2, 2.6),
+    fuse: 0, blinkT: rand(1.6, 3), fade: 0, ghost: 0, broodT: rand(2, 3.5), lanceT: rand(1.5, 3), aimT: 0, rushT: 0,
   };
   e.maxHp = e.hp;
   enemies.push(e);
@@ -593,6 +625,10 @@ function chooseType(m) {
     ['splitter', m > 1.5 ? 3 : 0],
     ['brute', m > 2 ? 1.5 + m * 0.3 : 0],
     ['shooter', m > 3 ? 2 + m * 0.15 : 0],
+    ['bomber', run.zone >= 1 ? 3 : 0],
+    ['phantom', run.zone >= 2 ? 3 : 0],
+    ['hive', run.zone >= 3 ? 1 : 0],
+    ['lancer', run.zone >= 4 ? 2.5 : 0],
   ];
   let tot = 0;
   for (const [, v] of w) tot += v;
@@ -628,14 +664,25 @@ function spawnBoss() {
   Sound.setIntensity(3);
 }
 
+function setZone(z) {
+  const r = run;
+  if (z === r.zone) return;
+  r.prevZone = r.zone;
+  r.zone = z;
+  r.zoneMix = 0;
+  if (z < 5) r.maxZone = Math.max(r.maxZone, z);
+  r.zoneBannerT = ZONES[z].intro ? 2.6 : 0; // after the boss banner has had its moment
+}
+
 function spawnCore() {
   const r = run;
+  setZone(5);
   r.coreT = r.t;
   const [x, y] = edgePos(60);
   const e = spawnEnemy('core', x, y);
   e.boss = true;
   e.final = true;
-  e.hp = e.maxHp = CORE_HP;
+  e.hp = e.maxHp = CORE_HP + CORE_HP_PER_EVO * Math.min(3, r.evoCount);
   e.dmg = 34 * (1 + (r.t / 60) * 0.08);
   e.phase = 0; e.actT = 2; e.windT = 0; e.chargeT = 0; e.cvx = 0; e.cvy = 0;
   e.stage = 1; e.spiralT = 0; e.spiralEmit = 0; e.spiralA = 0; e.spiralDir = 1;
@@ -722,6 +769,7 @@ function killEnemy(e) {
   } else if (e.boss) {
     if (r.boss === e) r.boss = null;
     r.bosses++;
+    if (!r.core) setZone(Math.min(4, r.zone + 1));
     r.slowT = 0.9;
     r.shake = 26;
     r.flash = 0.9; r.flashCol = COL.white;
@@ -748,6 +796,7 @@ function killEnemy(e) {
     if (roll < 0.005) { if (player.hp < r.st.maxHp * 0.9) dropPickup(e.x, e.y, 'heart', 40); }
     else if (roll < 0.007) dropPickup(e.x, e.y, 'magnet', 40);
     else if (roll < 0.0085) dropPickup(e.x, e.y, 'bomb', 40);
+    if (e.type === 'bomber') r.blasts.push({ x: e.x, y: e.y, R: 88, player: false, dmg: 0 });
     if (e.type === 'splitter') {
       for (let i = 0; i < 2; i++) {
         const m = spawnEnemy('mini', e.x + rand(-12, 12), e.y + rand(-12, 12));
@@ -875,33 +924,26 @@ const FIRE = {
     const tgt = bossNear ? boss : nearestEnemy(p.x, p.y, 560);
     if (!tgt) return false;
     const base = Math.atan2(tgt.y - p.y, tgt.x - p.x);
-    const n = L.n + run.st.multi;
+    const n = L.n + run.st.multi, spd = L.speed || 640, size = L.size || 1;
     for (let i = 0; i < n; i++) {
       const a = base + (i - (n - 1) / 2) * 0.13;
       const c = Math.cos(a), s = Math.sin(a);
-      bullets.push({ x: p.x + c * 14, y: p.y + s * 14, vx: c * 640, vy: s * 640, r: 5 * Math.sqrt(run.st.area), dmg: L.dmg, pierce: L.pierce, life: 1.1, hits: [], col: COL.yellow, dead: false });
+      bullets.push({ x: p.x + c * 14, y: p.y + s * 14, vx: c * spd, vy: s * spd, r: 5 * size * Math.sqrt(run.st.area), dmg: L.dmg, pierce: L.pierce, life: 1.1, hits: [], col: size > 1 ? COL.gold : COL.yellow, big: size > 1, dead: false });
     }
     Sound.shoot();
     return true;
   },
   nova(L) {
-    const p = player, R = L.rad * run.st.area;
-    if (!nearestEnemy(p.x, p.y, R + 20)) return false;
-    fx.push({ k: 'ring', x: p.x, y: p.y, R, life: 0.42, max: 0.42, col: COL.violet, w: 9 });
-    const n = query(p.x, p.y, R + 50);
-    for (let k = 0; k < n; k++) {
-      const e = enemies[Q[k]];
-      if (e.dead) continue;
-      const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1;
-      if (d < R + e.r) hurtEnemy(e, L.dmg, (dx / d) * 330, (dy / d) * 330);
-    }
-    run.shake = Math.max(run.shake, 4);
+    const p = player;
+    if (!nearestEnemy(p.x, p.y, L.rad * run.st.area + 20)) return false;
+    novaWave(L, 1);
+    if (L.echo) run.novaEcho = { t: 0.32, L }; // Hypernova: a second, wider wave follows
     Sound.nova();
     return true;
   },
   chain(L) {
     const p = player;
-    const bolts = 1 + run.st.multi;
+    const bolts = (L.bolts || 1) + run.st.multi;
     let fired = false;
     for (let b = 0; b < bolts; b++) {
       let cur = randomEnemyNear(p.x, p.y, 430);
@@ -926,11 +968,11 @@ const FIRE = {
     const tgt = bossInReach ? boss : nearestEnemy(p.x, p.y, reach);
     if (!tgt) return false;
     const base = Math.atan2(tgt.y - p.y, tgt.x - p.x);
-    const beams = 1 + run.st.multi;
+    const beams = (L.beams || 1) + run.st.multi, fan = L.beams ? 0.2 : 0.32;
     const w = L.w * run.st.area, len = L.len;
     const N = enemies.length;
     for (let b = 0; b < beams; b++) {
-      const a = base + (b - (beams - 1) / 2) * 0.32;
+      const a = base + (b - (beams - 1) / 2) * fan;
       const c = Math.cos(a), s = Math.sin(a);
       for (let i = 0; i < N; i++) {
         const e = enemies[i];
@@ -949,35 +991,65 @@ const FIRE = {
   },
 };
 
+function novaWave(L, scale) {
+  const p = player, R = L.rad * run.st.area * scale;
+  fx.push({ k: 'ring', x: p.x, y: p.y, R, life: 0.42, max: 0.42, col: scale > 1 ? COL.white : COL.violet, w: 9 });
+  const n = query(p.x, p.y, R + 50);
+  for (let k = 0; k < n; k++) {
+    const e = enemies[Q[k]];
+    if (e.dead) continue;
+    const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1;
+    if (d < R + e.r) hurtEnemy(e, L.dmg, (dx / d) * 330, (dy / d) * 330);
+  }
+  run.shake = Math.max(run.shake, 4);
+}
+
 function updateOrbit(dt, L) {
   const p = player, r = run;
   r.orbA += dt * L.spd;
-  const n = L.n + r.st.multi, R = L.rad * r.st.area, lr = 10 * Math.sqrt(r.st.area);
+  const n = L.n + r.st.multi, lr = 10 * Math.sqrt(r.st.area);
   r.lenses.length = 0;
-  for (let i = 0; i < n; i++) {
-    const a = r.orbA + (i / n) * TAU;
-    const lx = p.x + Math.cos(a) * R, ly = p.y + Math.sin(a) * R;
-    r.lenses.push(lx, ly);
-    const q = query(lx, ly, lr + 50);
-    for (let k = 0; k < q; k++) {
-      const e = enemies[Q[k]];
-      if (e.dead || e.lensT > r.t) continue;
-      const dx = e.x - lx, dy = e.y - ly, rr = e.r + lr;
-      if (dx * dx + dy * dy < rr * rr) {
-        e.lensT = r.t + 0.4;
-        const d = Math.hypot(dx, dy) || 1;
-        hurtEnemy(e, L.dmg, (dx / d) * 200, (dy / d) * 200);
-        burst(lx, ly, COL.cyan, 3, 160, 2);
+  r.orbitR.length = 0;
+  // Ereignishorizont adds a second, counter-rotating ring further out
+  const rings = L.rad2 ? [[L.rad, 1], [L.rad2, -0.8]] : [[L.rad, 1]];
+  for (const [rad, dir] of rings) {
+    const R = rad * r.st.area;
+    r.orbitR.push(R);
+    for (let i = 0; i < n; i++) {
+      const a = r.orbA * dir + (i / n) * TAU;
+      const lx = p.x + Math.cos(a) * R, ly = p.y + Math.sin(a) * R;
+      r.lenses.push(lx, ly);
+      const q = query(lx, ly, lr + 50);
+      for (let k = 0; k < q; k++) {
+        const e = enemies[Q[k]];
+        if (e.dead || e.lensT > r.t) continue;
+        const dx = e.x - lx, dy = e.y - ly, rr = e.r + lr;
+        if (dx * dx + dy * dy < rr * rr) {
+          e.lensT = r.t + 0.4;
+          const d = Math.hypot(dx, dy) || 1;
+          hurtEnemy(e, L.dmg, (dx / d) * 200, (dy / d) * 200);
+          burst(lx, ly, COL.cyan, 3, 160, 2);
+        }
       }
     }
   }
 }
 
+const weaponStats = (id) => (run.evolved[id] ? EVOLUTIONS[id].stats : WEAPONS[id].lv[run.weapons[id] - 1]);
+function evolvable() {
+  const r = run, out = [];
+  for (const id in r.weapons) {
+    if (r.weapons[id] >= 5 && !r.evolved[id] && r.passives[EVOLUTIONS[id].needs]) out.push(id);
+  }
+  return out;
+}
+
 function updateWeapons(dt) {
   const r = run;
   if (!r.weapons.orbit) r.lenses.length = 0;
+  if (r.novaEcho && (r.novaEcho.t -= dt) <= 0) { novaWave(r.novaEcho.L, 1.3); r.novaEcho = null; }
   for (const id in r.weapons) {
-    const L = WEAPONS[id].lv[r.weapons[id] - 1];
+    const L = weaponStats(id);
     if (id === 'orbit') { updateOrbit(dt, L); continue; }
     r.wt[id] = (r.wt[id] === undefined ? 0.3 : r.wt[id]) - dt;
     if (r.wt[id] <= 0) r.wt[id] = FIRE[id](L) ? L.cd * r.st.cd : 0.12;
@@ -1183,6 +1255,60 @@ function update(dt) {
         e.shootT = 2.6 + Math.random();
         ebullets.push({ x: e.x, y: e.y, vx: dx * 190, vy: dy * 190, r: 6, dmg: e.dmg, life: 4, col: COL.cyan, dead: false });
       }
+    } else if (e.type === 'bomber') {
+      if (e.fuse > 0) {
+        sp = 0;
+        e.fuse -= dt;
+        if (e.fuse <= 0) { e.dead = true; r.blasts.push({ x: e.x, y: e.y, R: 88, player: true, dmg: e.dmg }); }
+      } else if (d < 78 && !r.dying) {
+        e.fuse = 0.6;
+        fx.push({ k: 'fuse', ref: e, R: 88, life: 0.6, max: 0.6 });
+      }
+    } else if (e.type === 'phantom') {
+      if (e.fade > 0) { // vanishing, then reappearing right next to the player
+        sp = 0;
+        e.fade -= dt;
+        if (e.fade <= 0) { e.x = e.tx; e.y = e.ty; e.ghost = 0.35; e.kx = e.ky = 0; burst(e.x, e.y, e.color, 8, 200); }
+      } else {
+        if (e.ghost > 0) e.ghost -= dt;
+        e.blinkT -= dt;
+        if (e.blinkT <= 0 && d > 170 && d < 650 && !r.dying) {
+          const side = Math.random() < 0.5 ? 1 : -1;
+          e.blinkT = rand(2.6, 3.6);
+          e.fade = 0.45;
+          e.tx = p.x - dx * 120 - dy * side * 40;
+          e.ty = p.y - dy * 120 + dx * side * 40;
+          fx.push({ k: 'mark', x: e.tx, y: e.ty, R: 22, life: 0.45, max: 0.45, col: e.color });
+        }
+      }
+    } else if (e.type === 'hive') {
+      e.broodT -= dt;
+      if (e.broodT <= 0 && !r.dying) {
+        e.broodT = 3.6;
+        for (let k = 0; k < 3 && enemies.length < MAX_ENEMIES + 40; k++) {
+          const a = Math.random() * TAU;
+          const m = spawnEnemy('mini', e.x + Math.cos(a) * (e.r + 8), e.y + Math.sin(a) * (e.r + 8));
+          m.kx = Math.cos(a) * 140; m.ky = Math.sin(a) * 140;
+        }
+      }
+    } else if (e.type === 'lancer') {
+      if (e.rushT > 0) {
+        sp = 0;
+        e.rushT -= dt;
+        e.x += e.rvx * dt; e.y += e.rvy * dt;
+      } else if (e.aimT > 0) {
+        sp = 0;
+        e.aimT -= dt;
+        if (e.aimT <= 0) { e.rushT = 0.5; e.rvx = Math.cos(e.aimA) * 540; e.rvy = Math.sin(e.aimA) * 540; }
+      } else {
+        e.lanceT -= dt;
+        if (e.lanceT <= 0 && d < 360 && !r.dying) {
+          e.lanceT = rand(2.8, 3.6);
+          e.aimT = 0.6;
+          e.aimA = Math.atan2(dy, dx);
+          fx.push({ k: 'tele', x: e.x, y: e.y, a: e.aimA, len: 300, life: 0.6, max: 0.6, w: 10, col: COL.blue });
+        }
+      }
     }
     if (r.dying) sp *= 0.3;
     // separation against neighbours in the same and adjacent cells
@@ -1220,7 +1346,7 @@ function update(dt) {
     const kd = Math.exp(-dt * 7);
     e.kx *= kd; e.ky *= kd;
     e.rot += dt * (e.shape === 'sq' ? 2.2 : e.boss ? 0.5 : 0.7);
-    if (!r.dying && d < e.r + p.r - 3) hurtPlayer(e.dmg);
+    if (!r.dying && d < e.r + p.r - 3 && !(e.fade > 0) && !(e.ghost > 0)) hurtPlayer(e.type === 'bomber' ? e.dmg * 0.4 : e.dmg);
     if (!e.boss && (Math.abs(p.x - e.x) > hw + 420 || Math.abs(p.y - e.y) > hh + 420)) {
       const [nx, ny] = edgePos();
       e.x = nx; e.y = ny; // recycle stragglers in front of the player
@@ -1342,6 +1468,34 @@ function update(dt) {
     shockwave(170 * r.st.area, 10 + r.level * 1.5, c);
     addText(p.x, p.y - 34, 'COMBO ×' + r.combo, true, c);
     Sound.combo();
+  }
+
+  // bomber explosions (a blast can set off further bombers in the same frame)
+  for (const b of r.blasts) {
+    fx.push({ k: 'ring', x: b.x, y: b.y, R: b.R, life: 0.35, max: 0.35, col: '#ff7a45', w: 8 });
+    burst(b.x, b.y, '#ff7a45', 14, 320, 4);
+    burst(b.x, b.y, COL.yellow, 6, 240, 3);
+    const n = query(b.x, b.y, b.R + 50);
+    for (let k = 0; k < n; k++) {
+      const e = enemies[Q[k]];
+      if (e.dead) continue;
+      const dx = e.x - b.x, dy = e.y - b.y, d = Math.hypot(dx, dy) || 1;
+      if (d < b.R + e.r) hurtEnemy(e, 20 + r.level * 2, (dx / d) * 300, (dy / d) * 300);
+    }
+    if (b.player && !r.dying) {
+      const dx = p.x - b.x, dy = p.y - b.y, rr = b.R + p.r;
+      if (dx * dx + dy * dy < rr * rr) hurtPlayer(b.dmg);
+    }
+    r.shake = Math.max(r.shake, 7);
+    Sound.blast();
+  }
+  r.blasts.length = 0;
+
+  if (r.zoneMix < 1) r.zoneMix = Math.min(1, r.zoneMix + dt / 2.5);
+  if (r.zoneBannerT > 0 && (r.zoneBannerT -= dt) <= 0 && !r.won) {
+    const Z = ZONES[r.zone];
+    banner(`Welt ${r.zone + 1} · ${Z.name}`, Z.intro, Z.accent);
+    Sound.zone();
   }
 
   compact(enemies); compact(bullets); compact(ebullets); compact(gems);
@@ -1551,11 +1705,31 @@ function render(now, dt) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
-  ctx.fillStyle = COL.ink;
+  ctx.fillStyle = state === 'menu' || !run ? COL.ink : zoneRgb('bg', 1);
   ctx.fillRect(0, 0, W, H);
   if (state === 'menu' || !run) renderMenuArt(now / 1000, dt);
-  else renderWorld(now / 1000);
+  else renderWorld(now / 1000, dt);
 }
+
+// Colour of the current world, cross-faded from the previous one while the switch is running.
+function zoneRgb(key, a) {
+  const A = ZONES[run.prevZone][key], B = ZONES[run.zone][key], m = run.zoneMix;
+  return `rgba(${Math.round(lerp(A[0], B[0], m))},${Math.round(lerp(A[1], B[1], m))},${Math.round(lerp(A[2], B[2], m))},${a})`;
+}
+const gridPatterns = [];
+function zonePattern(z) {
+  if (!gridPatterns[z]) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 48;
+    const g = c.getContext('2d'), [R, G, B] = ZONES[z].grid;
+    g.fillStyle = `rgba(${R},${G},${B},0.17)`;
+    g.fillRect(0, 0, 2, 2);
+    gridPatterns[z] = ctx.createPattern(c, 'repeat');
+  }
+  return gridPatterns[z];
+}
+const motes = Array.from({ length: 46 }, () => ({ x: Math.random(), y: Math.random(), z: rand(0.35, 1) }));
+let moteCamX = 0, moteCamY = 0;
 
 function renderMenuArt(t, dt) {
   const narrow = W < 760;
@@ -1632,17 +1806,34 @@ function renderMenuArt(t, dt) {
   ctx.globalAlpha = 1;
 }
 
-function renderWorld(t) {
+function renderWorld(t, dt) {
   const r = run, p = player;
   let sx = 0, sy = 0;
   if (save.settings.shake && r.shake > 0.2) { sx = (Math.random() * 2 - 1) * r.shake; sy = (Math.random() * 2 - 1) * r.shake; }
+  const zA = ZONES[r.prevZone], zB = ZONES[r.zone], zm = r.zoneMix;
 
-  // nebula in screen space, drifting with a little parallax
+  // nebula in screen space, drifting with a little parallax, tinted by the world
   ctx.globalCompositeOperation = 'lighter';
   const nb = Math.max(W, H) * 0.9;
-  const c1 = SPECTRUM[((t / 9) | 0) % 7], c2 = SPECTRUM[(((t / 9) | 0) + 4) % 7];
-  drawGlow(c1, W * 0.25 - cam.x * 0.04 % W, H * 0.3 - cam.y * 0.04 % H, nb, 0.07);
-  drawGlow(c2, W * 0.8 - cam.x * 0.06 % W, H * 0.75 - cam.y * 0.06 % H, nb * 0.8, 0.06);
+  const n1x = W * 0.25 - cam.x * 0.04 % W, n1y = H * 0.3 - cam.y * 0.04 % H;
+  const n2x = W * 0.8 - cam.x * 0.06 % W, n2y = H * 0.75 - cam.y * 0.06 % H;
+  if (zm < 1) {
+    drawGlow(zA.neb[0], n1x, n1y, nb, 0.09 * (1 - zm));
+    drawGlow(zA.neb[1], n2x, n2y, nb * 0.8, 0.08 * (1 - zm));
+  }
+  drawGlow(zB.neb[0], n1x, n1y, nb, 0.09 * zm);
+  drawGlow(zB.neb[1], n2x, n2y, nb * 0.8, 0.08 * zm);
+  // drifting motes: embers, bubbles, spores … depending on the world
+  const mv = zB.mote, dcx = (cam.x - moteCamX) * VS, dcy = (cam.y - moteCamY) * VS;
+  moteCamX = cam.x; moteCamY = cam.y;
+  for (const m of motes) {
+    if (!reducedMotion) {
+      m.x += ((mv[0] * m.z * dt) - dcx * 0.3 * m.z) / W;
+      m.y += ((mv[1] * m.z * dt) - dcy * 0.3 * m.z) / H;
+    }
+    m.x -= Math.floor(m.x); m.y -= Math.floor(m.y);
+    drawGlow(zB.accent, m.x * W, m.y * H, 3 + m.z * 4, 0.28 * m.z);
+  }
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
 
@@ -1652,8 +1843,15 @@ function renderWorld(t) {
   const vx0 = cam.x - hw, vx1 = cam.x + hw, vy0 = cam.y - hh, vy1 = cam.y + hh;
   const vis = (x, y, rr) => x + rr > vx0 && x - rr < vx1 && y + rr > vy0 && y - rr < vy1;
 
-  ctx.fillStyle = gridPattern;
+  if (zm < 1) {
+    ctx.globalAlpha = 1 - zm;
+    ctx.fillStyle = zonePattern(r.prevZone);
+    ctx.fillRect(vx0, vy0, hw * 2, hh * 2);
+  }
+  ctx.globalAlpha = zm;
+  ctx.fillStyle = zonePattern(r.zone);
   ctx.fillRect(vx0, vy0, hw * 2, hh * 2);
+  ctx.globalAlpha = 1;
 
   // ---------- glow pass (additive)
   ctx.globalCompositeOperation = 'lighter';
@@ -1691,10 +1889,26 @@ function renderWorld(t) {
       ctx.strokeStyle = COL.white;
       ctx.lineWidth = w * 0.3;
       ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x + c * f.len, f.y + s * f.len); ctx.stroke();
+    } else if (f.k === 'fuse') {
+      if (f.ref.dead) continue;
+      ctx.globalAlpha = 0.35 + 0.4 * Math.abs(Math.sin(t * 24));
+      ctx.strokeStyle = '#ff7a45';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(f.ref.x, f.ref.y, f.R * (1 - a * 0.6), 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 0.08;
+      ctx.fillStyle = '#ff7a45';
+      ctx.beginPath(); ctx.arc(f.ref.x, f.ref.y, f.R, 0, TAU); ctx.fill();
+    } else if (f.k === 'mark') {
+      ctx.globalAlpha = 0.4 + 0.5 * (1 - a);
+      ctx.strokeStyle = f.col;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.R * (0.6 + a), 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
     } else if (f.k === 'tele') {
       ctx.globalAlpha = 0.25 + 0.5 * Math.abs(Math.sin(t * 20));
-      ctx.strokeStyle = COL.red;
-      ctx.lineWidth = 36;
+      ctx.strokeStyle = f.col || COL.red;
+      ctx.lineWidth = f.w || 36;
       ctx.lineCap = 'butt';
       ctx.setLineDash([18, 14]);
       ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x + Math.cos(f.a) * f.len, f.y + Math.sin(f.a) * f.len); ctx.stroke();
@@ -1742,12 +1956,25 @@ function renderWorld(t) {
   ctx.strokeStyle = '#fff7cc';
   ctx.lineWidth = 3.4;
   ctx.beginPath();
+  let anyBig = false;
   for (const b of bullets) {
     if (!vis(b.x, b.y, 30)) continue;
+    if (b.big) { anyBig = true; continue; }
     ctx.moveTo(b.x - b.vx * 0.024, b.y - b.vy * 0.024);
     ctx.lineTo(b.x, b.y);
   }
   ctx.stroke();
+  if (anyBig) {
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#fff3c4';
+    ctx.beginPath();
+    for (const b of bullets) {
+      if (!b.big || !vis(b.x, b.y, 30)) continue;
+      ctx.moveTo(b.x - b.vx * 0.04, b.y - b.vy * 0.04);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+  }
   ctx.fillStyle = COL.white;
   ctx.beginPath();
   for (const b of ebullets) {
@@ -1758,11 +1985,10 @@ function renderWorld(t) {
   ctx.fill();
 
   if (r.lenses.length) {
-    const R = WEAPONS.orbit.lv[(r.weapons.orbit || 1) - 1].rad * r.st.area;
     ctx.globalAlpha = 0.1;
     ctx.strokeStyle = COL.cyan;
     ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, TAU); ctx.stroke();
+    for (const R of r.orbitR) { ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, TAU); ctx.stroke(); }
     const lr = 10 * Math.sqrt(r.st.area);
     for (let i = 0; i < r.lenses.length; i += 2) drawGlow(COL.cyan, r.lenses[i], r.lenses[i + 1], lr * 3, 0.8);
     ctx.globalAlpha = 1;
@@ -1846,8 +2072,8 @@ function renderWorld(t) {
   // ---------- screen space overlays
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
-  vg.addColorStop(0, 'rgba(7,6,15,0)');
-  vg.addColorStop(1, 'rgba(7,6,15,0.7)');
+  vg.addColorStop(0, zoneRgb('bg', 0));
+  vg.addColorStop(1, zoneRgb('bg', 0.7));
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
 
@@ -2009,8 +2235,43 @@ function drawEnemy(e, t) {
   if (e.final) { drawCore(e, t); return; }
   const ang = Math.atan2(player.y - e.y, player.x - e.x);
   const R = e.r;
+  // phantoms fade out before a jump and fade back in after it
+  const alpha = e.fade > 0 ? e.fade / 0.45 : e.ghost > 0 ? 1 - e.ghost / 0.35 : 1;
   ctx.beginPath();
   switch (e.shape) {
+    case 'bomb': {
+      const n = 8, pulse = e.fuse > 0 ? 1.15 : 1;
+      for (let i = 0; i < n * 2; i++) {
+        const a = e.rot + (i / (n * 2)) * TAU, rr = (i % 2 ? R * 0.78 : R * 1.12) * pulse;
+        const x = e.x + Math.cos(a) * rr, y = e.y + Math.sin(a) * rr;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      break;
+    }
+    case 'ghost':
+      ctx.arc(e.x, e.y - R * 0.15, R, Math.PI, 0);
+      ctx.lineTo(e.x + R, e.y + R * 0.8);
+      ctx.lineTo(e.x + R * 0.5, e.y + R * 0.45);
+      ctx.lineTo(e.x, e.y + R * 0.8);
+      ctx.lineTo(e.x - R * 0.5, e.y + R * 0.45);
+      ctx.lineTo(e.x - R, e.y + R * 0.8);
+      break;
+    case 'hive':
+      for (let i = 0; i < 6; i++) {
+        const a = e.rot * 0.4 + (i / 6) * TAU;
+        const x = e.x + Math.cos(a) * R, y = e.y + Math.sin(a) * R;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      break;
+    case 'lance': {
+      const la = e.aimT > 0 || e.rushT > 0 ? e.aimA : ang;
+      const c = Math.cos(la), s = Math.sin(la);
+      ctx.moveTo(e.x + c * R * 1.7, e.y + s * R * 1.7);
+      ctx.lineTo(e.x - s * R * 0.5, e.y + c * R * 0.5);
+      ctx.lineTo(e.x - c * R * 0.9, e.y - s * R * 0.9);
+      ctx.lineTo(e.x + s * R * 0.5, e.y - c * R * 0.5);
+      break;
+    }
     case 'tri':
       ctx.moveTo(e.x + Math.cos(ang) * R * 1.15, e.y + Math.sin(ang) * R * 1.15);
       ctx.lineTo(e.x + Math.cos(ang + 2.4) * R, e.y + Math.sin(ang + 2.4) * R);
@@ -2050,8 +2311,9 @@ function drawEnemy(e, t) {
     }
   }
   ctx.closePath();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = e.flash > 0 ? COL.white : COL.body;
+  ctx.globalAlpha = alpha;
+  const fuseBlink = e.fuse > 0 && ((t * 16) | 0) % 2 === 0;
+  ctx.fillStyle = e.flash > 0 || fuseBlink ? COL.white : COL.body;
   ctx.fill();
   ctx.lineJoin = 'round';
   ctx.lineWidth = e.boss ? 3.5 : e.elite ? 3 : 2.2;
@@ -2063,6 +2325,18 @@ function drawEnemy(e, t) {
   ctx.beginPath();
   ctx.arc(e.x + Math.cos(ang) * R * eo, e.y + Math.sin(ang) * R * eo, Math.max(2.2, R * (e.boss ? 0.2 : 0.17)), 0, TAU);
   ctx.fill();
+  if (e.shape === 'hive') { // honeycomb core
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = e.color;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = -e.rot * 0.4 + (i / 6) * TAU, x = e.x + Math.cos(a) * R * 0.55, y = e.y + Math.sin(a) * R * 0.55;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
   if (e.elite) {
     ctx.globalAlpha = 0.5;
     ctx.strokeStyle = COL.gold;
@@ -2150,7 +2424,7 @@ function drawPickup(u, t) {
 // ============================================================ UI
 const ui = {
   hud: $('#hud'), menu: $('#menu'), levelup: $('#levelup'), pause: $('#pause'), over: $('#over'), shop: $('#shop'), ach: $('#ach'),
-  xpFill: $('#xpFill'), tlFill: $('#tlFill'), timeline: $('#timeline'), hpFill: $('#hpFill'), hpText: $('#hpText'), lv: $('#hudLv'), time: $('#hudTime'), score: $('#hudScore'), kills: $('#hudKills'),
+  xpFill: $('#xpFill'), tlFill: $('#tlFill'), timeline: $('#timeline'), zoneLabel: $('#zoneLabel'), hpFill: $('#hpFill'), hpText: $('#hpText'), lv: $('#hudLv'), time: $('#hudTime'), score: $('#hudScore'), kills: $('#hudKills'),
   combo: $('#combo'), comboN: $('#comboN'), comboFill: $('#comboFill'), bossbar: $('#bossbar'), bossFill: $('#bossFill'),
   loadout: $('#loadout'), dash: $('#btnDash'), banner: $('#banner'), hint: $('#hint'), cards: $('#cards'), reroll: $('#btnReroll'), toasts: $('#toasts'),
 };
@@ -2185,6 +2459,11 @@ function updateHud() {
   setText(ui.lv, 'lv', r.level);
   setText(ui.time, 't', fmtTime(r.t));
   ui.tlFill.style.transform = `scaleX(${clamp(r.t / FINAL_T, 0, 1).toFixed(4)})`;
+  if (hudCache.zone !== r.zone) {
+    hudCache.zone = r.zone;
+    ui.zoneLabel.innerHTML = r.zone === 5 ? 'Der Kern' : `<span class="zl-n">Welt ${r.zone + 1} · </span>${ZONES[r.zone].name}`;
+    ui.zoneLabel.style.setProperty('--zc', ZONES[r.zone].accent);
+  }
   const fin = !!r.core && !r.won;
   if (hudCache.fin !== fin) { hudCache.fin = fin; ui.timeline.classList.toggle('final', fin); }
   setText(ui.score, 's', fmtNum(r.score));
@@ -2212,7 +2491,8 @@ function updateHud() {
 
 function renderLoadout() {
   const chip = (it, l, max) => `<span class="chip" style="--c:${it.color}" title="${it.name}">${ICONS[it.icon]}<b>${l >= max ? 'MAX' : l}</b></span>`;
-  const w = Object.entries(run.weapons).map(([id, l]) => chip(WEAPONS[id], l, 5)).join('');
+  const evoChip = (id) => `<span class="chip evo" style="--c:${COL.gold}" title="${EVOLUTIONS[id].name}">${ICONS[WEAPONS[id].icon]}<b>EVO</b></span>`;
+  const w = Object.entries(run.weapons).map(([id, l]) => (run.evolved[id] ? evoChip(id) : chip(WEAPONS[id], l, 5))).join('');
   const pz = Object.entries(run.passives).map(([id, l]) => chip(PASSIVES[id], l, PASSIVES[id].max)).join('');
   ui.loadout.innerHTML = `<div class="loadout-row">${w}</div>${pz ? `<div class="loadout-row">${pz}</div>` : ''}`;
 }
@@ -2232,7 +2512,7 @@ function rollChoices() {
     pool.push({ kind: 'p', id, w: l ? 1.15 : 0.9 });
   }
   const n = shopLv('insight') ? 4 : 3;
-  const out = [];
+  const out = evolvable().slice(0, n).map((id) => ({ kind: 'e', id }));
   while (out.length < n && pool.length) {
     let tot = 0;
     for (const c of pool) tot += c.w;
@@ -2245,15 +2525,22 @@ function rollChoices() {
 }
 
 function cardHtml(c, i) {
-  let name, desc, kind, icon, col, lvNow = 0, max = 0;
-  if (c.kind === 'w') {
-    const d = WEAPONS[c.id];
+  let name, desc, kind, icon, col, lvNow = 0, max = 0, hint = '', cls = 'card';
+  if (c.kind === 'e') {
+    const d = EVOLUTIONS[c.id], w = WEAPONS[c.id];
+    name = d.name; icon = w.icon; col = COL.gold; desc = d.desc; kind = 'Entwicklung'; cls = 'card card-evo';
+    hint = `${w.name} V + ${PASSIVES[d.needs].name}`;
+  } else if (c.kind === 'w') {
+    const d = WEAPONS[c.id], evo = EVOLUTIONS[c.id];
     lvNow = run.weapons[c.id] || 0; max = 5;
     name = d.name; icon = d.icon; col = d.color; desc = d.up[lvNow]; kind = 'Waffe';
+    hint = `Stufe V + ${PASSIVES[evo.needs].name} → <b>${evo.name}</b>`;
   } else if (c.kind === 'p') {
     const d = PASSIVES[c.id];
     lvNow = run.passives[c.id] || 0; max = d.max;
     name = d.name; icon = d.icon; col = d.color; desc = d.desc; kind = 'Modul';
+    const partner = Object.keys(run.weapons).find((id) => EVOLUTIONS[id].needs === c.id && !run.evolved[id]);
+    if (partner) hint = `Mit ${WEAPONS[partner].name} V → <b>${EVOLUTIONS[partner].name}</b>`;
   } else if (c.kind === 'heal') {
     name = 'Reparatur'; desc = 'Stellt 40 Leben wieder her.'; kind = 'Sofort'; icon = 'hp'; col = COL.green;
   } else {
@@ -2261,7 +2548,7 @@ function cardHtml(c, i) {
   }
   const status = max ? (lvNow ? `Stufe ${ROMAN[lvNow]}` : 'Neu') : '';
   const pips = max ? `<span class="pips">${Array.from({ length: max }, (_, k) => `<i class="${k < lvNow ? 'on' : k === lvNow ? 'new' : ''}"></i>`).join('')}</span>` : '';
-  return `<button class="card" type="button" data-i="${i}" style="--c:${col};--i:${i}"><span class="card-icon">${ICONS[icon]}</span><span class="card-key">${i + 1}</span><span class="card-body"><span class="card-kind">${kind}${status ? ' · ' + status : ''}</span><span class="card-name">${name}</span><span class="card-desc">${desc}</span>${pips}</span></button>`;
+  return `<button class="${cls}" type="button" data-i="${i}" style="--c:${col};--i:${i}"><span class="card-icon">${ICONS[icon]}</span><span class="card-key">${i + 1}</span><span class="card-body"><span class="card-kind">${kind}${status ? ' · ' + status : ''}</span><span class="card-name">${name}</span><span class="card-desc">${desc}</span>${hint ? `<span class="card-hint">${hint}</span>` : ''}${pips}</span></button>`;
 }
 
 function renderCards() {
@@ -2296,7 +2583,15 @@ function choose(i, fromKey) {
   const c = r.choices[i];
   if (!c) return;
   const before = r.st.maxHp;
-  if (c.kind === 'w') {
+  if (c.kind === 'e') {
+    r.evolved[c.id] = true;
+    r.evoCount++;
+    r.wt[c.id] = 0.1;
+    fx.push({ k: 'ring', x: player.x, y: player.y, R: 260, life: 0.7, max: 0.7, col: COL.gold, w: 10 });
+    for (const col of SPECTRUM) burst(player.x, player.y, col, 6, 360, 4);
+    banner(EVOLUTIONS[c.id].name, `${WEAPONS[c.id].name} hat sich entwickelt`, COL.yellow);
+    Sound.evolve();
+  } else if (c.kind === 'w') {
     r.weapons[c.id] = (r.weapons[c.id] || 0) + 1;
   } else if (c.kind === 'p') {
     r.passives[c.id] = (r.passives[c.id] || 0) + 1;
@@ -2378,10 +2673,12 @@ function pauseGame() {
   $('#btnQuit').textContent = 'Lauf beenden';
   $('#pauseInfo').textContent = `${fmtTime(run.t)} · Level ${run.level} · ${fmtNum(run.kills)} Schatten`;
   const rows = [
-    ...Object.entries(run.weapons).map(([id, l]) => [WEAPONS[id], l, 5]),
-    ...Object.entries(run.passives).map(([id, l]) => [PASSIVES[id], l, PASSIVES[id].max]),
+    ...Object.entries(run.weapons).map(([id, l]) => [WEAPONS[id], l, 5, run.evolved[id] ? EVOLUTIONS[id].name : '']),
+    ...Object.entries(run.passives).map(([id, l]) => [PASSIVES[id], l, PASSIVES[id].max, '']),
   ];
-  $('#pauseBuild').innerHTML = rows.map(([d, l, max]) => `<div class="build-row" style="--c:${d.color}"><span class="ic">${ICONS[d.icon]}</span><span class="nm">${d.name}</span><span class="pips">${Array.from({ length: max }, (_, k) => `<i class="${k < l ? 'on' : ''}"></i>`).join('')}</span></div>`).join('');
+  $('#pauseBuild').innerHTML = rows.map(([d, l, max, evo]) => evo
+    ? `<div class="build-row" style="--c:${COL.gold}"><span class="ic">${ICONS[d.icon]}</span><span class="nm">${evo}</span><span class="evo-tag">Entwickelt</span></div>`
+    : `<div class="build-row" style="--c:${d.color}"><span class="ic">${ICONS[d.icon]}</span><span class="nm">${d.name}</span><span class="pips">${Array.from({ length: max }, (_, k) => `<i class="${k < l ? 'on' : ''}"></i>`).join('')}</span></div>`).join('');
   ui.pause.hidden = false;
   Sound.duck(true);
   if (!touchDevice) $('#btnResume').focus({ preventScroll: true });
